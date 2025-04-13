@@ -1,0 +1,80 @@
+name: Update submodules on staging
+
+on:
+  workflow_dispatch: # 手動実行を許可
+  schedule:
+    - cron: '0 * * * *' # 毎時0分に実行（本番運用に合わせて調整）
+
+# 同時実行制御: stagingブランチに対するこのワークフローは同時に1つだけ実行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 必要な権限を明示的に設定
+permissions:
+  contents: write # リポジトリへのコミット、プッシュ、サブモジュール更新のため
+
+jobs:
+  update-submodules:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout QoS repo on staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: staging # staging ブランチを直接チェックアウト
+          submodules: recursive # サブモジュールも再帰的にチェックアウト
+          # GITHUB_TOKENを使用。プライベートサブモジュール等で権限エラーになる場合は
+          # リポジトリへのアクセス権を持つPATをsecretsに設定し、以下のように変更:
+          # token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0 # コミットのために完全な履歴を取得 (submodule update --mergeにも役立つ可能性)
+
+      - name: Configure Git User
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update submodules to latest tracked commit
+        id: update_submodules
+        run: |
+          echo "Attempting to update submodules..."
+          # .gitmodules で指定されたブランチの最新コミットに更新を試みる
+          # --merge はローカル変更なければFast-forward、あればマージ試行（コンフリクト時は失敗）
+          if git submodule update --remote --merge; then
+            echo "Submodule update command finished."
+            # 更新があったかどうかを確認 (git statusで確認する方がより確実な場合も)
+            if ! git diff --quiet HEAD -- .gitmodules $(git submodule status | awk '{print $2}'); then
+              echo "Submodule changes detected."
+              echo "changes_detected=true" >> $GITHUB_OUTPUT
+            else
+              echo "No effective submodule changes detected."
+              echo "changes_detected=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "git submodule update command failed. Check for conflicts or access issues."
+            # 必要に応じてエラー処理を追加 (例: exit 1)
+            echo "changes_detected=false" >> $GITHUB_OUTPUT # 失敗時は変更なしとして扱う
+          fi
+
+      - name: Commit and Push submodule updates
+        # update_submodules ステップで変更が検知された場合のみ実行
+        if: steps.update_submodules.outputs.changes_detected == 'true'
+        run: |
+          echo "Staging and committing changes..."
+          # 更新されたサブモジュールのパスと .gitmodules をステージング
+          # git add . でも良いが、意図しないファイルが含まれないように注意
+          git add .gitmodules $(git submodule status | awk '{print $2}')
+
+          # 念のためもう一度差分を確認 (update自体は成功しても空コミットになる場合対策)
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: Auto-update submodules on staging"
+            echo "Pushing changes to staging..."
+            git push origin staging
+          else
+            echo "No effective changes to commit after staging."
+          fi
+
+      - name: No updates needed
+        if: steps.update_submodules.outputs.changes_detected == 'false'
+        run: echo "No submodule updates needed or update command failed."
