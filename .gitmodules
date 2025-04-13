@@ -1,0 +1,9 @@
+[submodule "QoS_DATA"]
+	path = QoS_DATA
+	url = git@github.com:jimi-117/QoS_DATA.git
+[submodule "QoS_AI"]
+	path = QoS_AI
+	url = git@github.com:jimi-117/QoS_AI.git
+[submodule "QoS_UI"]
+	path = QoS_UI
+	url = git@github.com:jimi-117/QoS_UI.git
