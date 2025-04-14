@@ -1,9 +1,0 @@
-services:
-  QoS_DATA:
-    build: ./QoS_DATA
-
-  QoS_AI:
-    build: ./QoS_AI
-
-  QoS_UI:
-    build: ./QoS_UI

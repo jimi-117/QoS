@@ -1,0 +1,73 @@
+services:
+  qos_ai:
+    build:
+      context: ./QoS_AI
+      dockerfile: Dockerfile #dockerfile for ai backend
+    ports:
+      - "8000:8000" #port for ai backend
+    environment:
+      - PYTHONUNBUFFERED=1
+      # - LLMAPIT_API_KEY=... 
+    volumes:
+      # - ./models:/app/models if mount extren ai model
+      - qos_data_volume:/app/data
+    develop:
+      watch:
+        - action: sync
+          path: ./QoS_AI/src
+          target: /app/src
+          ignore:
+            - __pycache__
+        - action: rebuild
+          path: ./QoS_AI/uv.lock
+    depends_on:
+      - qos_data
+
+  qos_data:
+    build: 
+      context: ./QoS_Data
+      dockerfile: Dockerfile #dockerfile for data
+    ports:
+      - "8001:8001" #differnt port with ai for data
+    environment:
+      - PYTHONUNBUFFERED=1
+      # - DATABASE_URL=postgres..... 
+    volumes:
+       - postgres_data:/var/lib/postgresql/data # enable if data needs to save
+    develop:
+      watch:
+        - action: sync
+          path: ./QoS_DATA/src
+          target: /app/src
+          ignore:
+            - __pycache__/
+        - action: rebuild
+          path: ./QoS_DATA/uv.lock
+      # depends_on:
+      #   - db # PostgreSQLコンテナなどを追加する場合
+  # volumes: # 必要に応じて名前付きボリュームを定義
+  #   qos_data_volume:
+  #   postgres_data:
+
+  # networks: # 必要に応じてカスタムネットワークを定義
+  #   qos_network
+  qos_ui:
+    build:
+      context: ./QoS_UI
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"   # Streamlit port
+    environment:
+      - QOS_AI_API_URL=http://qos_ai:8000 # AI bacjend URL
+      - PYTHONUNBUFFERED=1
+    develop:
+      watch:
+        - action: sync
+          path: ./QoS_UI/src
+          target: /app/src
+          ignore:
+            - __pycache__/
+        - action: rebuild
+          path: ./QoS_UI/uv.lock
+    depends_on:
+      - qos_ai
